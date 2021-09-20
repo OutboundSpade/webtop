@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!--
+    noVNC example: lightweight example using minimal UI and features
+
+    This is a self-contained file which doesn't import WebUtil or external CSS.
+
+    Copyright (C) 2019 The noVNC Authors
+    noVNC is licensed under the MPL 2.0 (see LICENSE.txt)
+    This file is licensed under the 2-Clause BSD license (see LICENSE.txt).
+
+    Connect parameters are provided in query string:
+        http://example.com/?host=HOST&port=PORT&scale=true
+    -->
+    <title>Draggable noVNC</title>
+    <meta
+      name="viewport"
+      content="width=device-width; initial-scale=1; viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+
+    <!-- possible content values: default, black or black-translucent -->
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+
+    <meta charset="utf-8" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        background-color: dimgrey;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background-image: url("./background1.jpeg");
+      }
+      html {
+        /* height: 100%; */
+      }
+
+      #top_bar {
+        background-color: #6e84a3;
+        color: white;
+        font: bold 18px Helvetica;
+        padding: 6px 5px 4px 5px;
+        border-bottom: 1px outset;
+        text-align: center;
+      }
+
+      #screenContainer {
+        position: absolute;
+        width: 50%;
+        height: 50%;
+        user-select: none;
+        z-index: 10;
+        /* overflow: hidden; */
+        background-color: grey;
+        resize: both;
+        /* overflow-y: hidden; */
+      }
+
+      #screen {
+        /*fill remaining space*/
+        flex: 1;
+        overflow: hidden;
+        height: 100%;
+      }
+    </style>
+
+    <script type="module" crossorigin="anonymous">
+      // RFB holds the API to connect and communicate with a VNC server
+      import RFB from "./core/rfb.js";
+
+      let rfb;
+      let desktopName;
+
+      // When this function is called we have
+      // successfully connected to a server
+      function connectedToServer(e) {
+        status("Connected to " + desktopName);
+      }
+
+      // This function is called when we are disconnected
+      function disconnectedFromServer(e) {
+        if (e.detail.clean) {
+          status("Disconnected");
+        } else {
+          status("Something went wrong, connection is closed");
+        }
+      }
+
+      // When this function is called, the server requires
+      // credentials to authenticate
+      function credentialsAreRequired(e) {
+        const password = prompt("Password Required:");
+        rfb.sendCredentials({ password: password });
+      }
+
+      // When this function is called we have received
+      // a desktop name from the server
+      function updateDesktopName(e) {
+        desktopName = e.detail.name;
+      }
+
+      // Since most operating systems will catch Ctrl+Alt+Del
+      // before they get a chance to be intercepted by the browser,
+      // we provide a way to emulate this key sequence.
+      function sendCtrlAltDel() {
+        rfb.sendCtrlAltDel();
+        return false;
+      }
+
+      // Show a status text in the top bar
+      function status(text) {
+        // document.getElementById("status").textContent = text;
+        console.log(`Status: ${text}`);
+      }
+
+      // This function extracts the value of one variable from the
+      // query string. If the variable isn't defined in the URL
+      // it returns the default value instead.
+      function readQueryVariable(name, defaultValue) {
+        // A URL with a query parameter can look like this (But will most probably get logged on the http server):
+        // https://www.example.com?myqueryparam=myvalue
+        //
+        // For privacy (Using a hastag #, the parameters will not be sent to the server)
+        // the url can be requested in the following way:
+        // https://www.example.com#myqueryparam=myvalue&password=secreatvalue
+        //
+        // Even Mixing public and non public parameters will work:
+        // https://www.example.com?nonsecretparam=example.com#password=secreatvalue
+        //
+        // Note that we use location.href instead of location.search
+        // because Firefox < 53 has a bug w.r.t location.search
+        const re = new RegExp(".*[?&]" + name + "=([^&#]*)"),
+          match = ""
+            .concat(document.location.href, window.location.hash)
+            .match(re);
+
+        if (match) {
+          // We have to decode the URL since want the cleartext value
+          return decodeURIComponent(match[1]);
+        }
+
+        return defaultValue;
+      }
+
+      // document.getElementById("sendCtrlAltDelButton").onclick = sendCtrlAltDel;
+
+      // Read parameters specified in the URL query string
+      // By default, use the host and port of server that served this file
+      const host = readQueryVariable("host", window.location.hostname);
+      let port = "6080"; //readQueryVariable("port", window.location.port);
+      const password = "password"; //readQueryVariable("password");
+      const path = readQueryVariable("path", "websockify");
+
+      // | | |         | | |
+      // | | | Connect | | |
+      // v v v         v v v
+
+      status("Connecting");
+
+      // Build the websocket URL used to connect
+      let url;
+      if (window.location.protocol === "https:") {
+        url = "wss";
+      } else {
+        url = "ws";
+      }
+      url += "://" + host;
+      if (port) {
+        url += ":" + port;
+      }
+      url += "/" + path;
+
+      console.log(url);
+      // Creating a new RFB object will start a new connection
+      rfb = new RFB(document.getElementById("screen"), url, {
+        credentials: { password: password },
+      });
+
+      // Add listeners to important events from the RFB module
+      rfb.addEventListener("connect", connectedToServer);
+      rfb.addEventListener("disconnect", disconnectedFromServer);
+      rfb.addEventListener("credentialsrequired", credentialsAreRequired);
+      rfb.addEventListener("desktopname", updateDesktopName);
+
+      // Set parameters that can be changed on an active connection
+      rfb.viewOnly = readQueryVariable("view_only", false);
+      rfb.scaleViewport = readQueryVariable("scale", false);
+
+      rfb.resizeSession = true;
+    </script>
+  </head>
+
+  <body>
+    <div id="screenContainer">
+      <div id="top_bar">Gimp Demo</div>
+      <div id="screen">
+        <!-- This is where the remote screen will appear -->
+      </div>
+    </div>
+  </body>
+
+  <script>
+    window.navigator.standalone;
+
+    // on Android Chrome
+    window.matchMedia("(display-mode: standalone)").matches;
+
+    function preventBehavior(e) {
+      e.preventDefault();
+    }
+
+    document.addEventListener("touchmove", preventBehavior, { passive: false });
+    //Make the DIV element draggagle:
+    dragElement(document.getElementById("screenContainer"));
+
+    function dragElement(elmnt) {
+      var pos1 = 0,
+        pos2 = 0,
+        pos3 = 0,
+        pos4 = 0;
+      if (document.getElementById("top_bar")) {
+        /* if present, the header is where you move the DIV from:*/
+        document.getElementById("top_bar").onmousedown = dragMouseDown;
+        document.getElementById("top_bar").ontouchstart = dragMouseDown;
+      } else {
+        /* otherwise, move the DIV from anywhere inside the DIV:*/
+        elmnt.onmousedown = dragMouseDown;
+        elmnt.ontouchstart = dragMouseDown;
+      }
+
+      function dragMouseDown(e) {
+        e = e || window.event;
+        e.preventDefault();
+        // get the mouse cursor position at startup:
+        if (e.type == "touchstart") {
+          pos3 = e.targetTouches[0].clientX;
+          pos4 = e.targetTouches[0].clientY;
+        } else {
+          pos3 = e.clientX;
+          pos4 = e.clientY;
+        }
+
+        document.onmouseup = closeDragElement;
+        document.ontouchend = closeDragElement;
+        // call a function whenever the cursor moves:
+        document.onmousemove = elementDrag;
+        document.ontouchmove = elementDrag;
+      }
+
+      function elementDrag(e) {
+        e = e || window.event;
+        e.preventDefault();
+        let xval, yval;
+        if (e.type == "touchmove") {
+          xval = e.targetTouches[0].clientX;
+          yval = e.targetTouches[0].clientY;
+        } else {
+          xval = e.clientX;
+          yval = e.clientY;
+        }
+        // alert(xval);
+
+        // calculate the new cursor position:
+        pos1 = pos3 - xval;
+        pos2 = pos4 - yval;
+        pos3 = xval;
+        pos4 = yval;
+        // set the element's new position:
+        elmnt.style.top = elmnt.offsetTop - pos2 + "px";
+        elmnt.style.left = elmnt.offsetLeft - pos1 + "px";
+      }
+
+      function closeDragElement() {
+        /* stop moving when mouse button is released:*/
+        document.onmouseup = null;
+        document.onmousemove = null;
+      }
+    }
+  </script>
+</html>
